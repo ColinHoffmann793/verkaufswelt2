@@ -861,7 +861,7 @@ function avatarSVG(seed){
 let scene,camera,renderer,raycaster,pointer,clock,groundMesh;
 let playerObj,ring,sunLight,hemiLight,sunBall,moonBall,starPts,skyTex,skyCanvas;
 const pickables=[],npcMeshes=[],swayers=[],clouds=[],cloudMats=[],lampLights=[],lampGlows=[],leavesP=[],butterflies=[],birds=[],fireworks=[],obstacles=[];
-let fountainSpray=null,fountainMat=null,pondMat=null,wheelStand=null,duckObj=null,goldBF=null,discoLights=[],fireflyPts=null;
+let fountainSpray=null,fountainMat=null,pondMat=null,wheelStand=null,duckObj=null,goldBF=null,discoLights=[],discoBall=null,fireflyPts=null;
 const ROOM=46,BOUND=ROOM-2.2;
 const WHEEL_POS={x:15,z:15},SHOP_POS={x:-15,z:15},SIGN_POS={x:-ROOM+3.2,z:-ROOM+5},DUCK_POS={x:21,z:-21};
 const POIS=[];
@@ -955,7 +955,9 @@ function addGazebo(x,z){const g=new THREE.Group();
   for(let i=0;i<6;i++){const a=i/6*Math.PI*2,p=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,3,8),wood);p.position.set(Math.cos(a)*2.6,1.6,Math.sin(a)*2.6);p.castShadow=true;g.add(p);}
   const roof=new THREE.Mesh(new THREE.ConeGeometry(3.5,1.7,8),mat(C("#7a3b3b"),{roughness:.85}));roof.position.y=4;roof.castShadow=true;g.add(roof);
   g.position.set(x,0,z);scene.add(g);obstacles.push({x,z,r:2.9});
-  for(let i=0;i<3;i++){const dl=new THREE.PointLight([C("#ff5a5a"),C("#5aff7a"),C("#5a8aff")][i],0,14);dl.position.set(x,3,z);scene.add(dl);discoLights.push(dl);}}
+  for(let i=0;i<3;i++){const dl=new THREE.PointLight([C("#ff5a5a"),C("#5aff7a"),C("#5a8aff")][i],0,16);dl.position.set(x,3,z);scene.add(dl);discoLights.push(dl);}
+  discoBall=new THREE.Mesh(new THREE.IcosahedronGeometry(.55,1),new THREE.MeshStandardMaterial({color:C("#d4dcec"),metalness:1,roughness:.16,emissive:C("#7f93c8"),emissiveIntensity:0,flatShading:true}));
+  discoBall.position.set(x,3.05,z);discoBall.visible=false;scene.add(discoBall);}
 function addFountain(x,z){const g=new THREE.Group(),stone=mat(C("#b9bec9"),{roughness:.7});
   const basin=new THREE.Mesh(new THREE.CylinderGeometry(3,3.3,.8,28),stone);basin.position.y=.4;basin.castShadow=true;basin.receiveShadow=true;
   fountainMat=new THREE.MeshStandardMaterial({color:C("#4aa3e0"),emissive:C("#2f6f9e"),emissiveIntensity:.4,roughness:.2,metalness:.2});
@@ -1148,7 +1150,7 @@ const keys={};
 let nearNPC=null,nearWheel=false,nearShop=false,nearSign=false,convoMesh=null;
 let money=0,displayMoney=0,streak=0,pendingSale=0;const sold=new Set();
 let yaw=0,pitch=0,pointerLocked=false,touchWalk=false,lastTouch=null,touchT0=0;
-let xp=0,level=0,phase=0.07,phaseTarget=0.07,legend=false,duckClicks=0,bfTimer=12,discoT=0,bobT=0;
+let xp=0,level=0,phase=0.07,phaseTarget=0.07,legend=false,duckClicks=0,bfTimer=12,discoT=0,discoMix=0,bobT=0;
 const nudged={};let hintI=0;
 const inv={coffee:0,dossier:0,charm:0,shoes:0};
 const runStats={deals:0,perfects:0,bestStreak:0,colorSet:new Set()};
@@ -1267,9 +1269,11 @@ function updateNPCs(dt){
 function updateDay(dt){
   phase=lerp(phase,phaseTarget,clamp(dt*.25,0,1));
   const pal=palAt(phase);
+  discoMix=lerp(discoMix,discoT>0?1:0,clamp(dt*4,0,1));
+  const dDim=lerp(1,.16,discoMix);
   const x=skyCanvas.getContext("2d"),grd=x.createLinearGradient(0,0,0,256);
-  grd.addColorStop(0,rgb(pal.top));grd.addColorStop(1,rgb(pal.bot));x.fillStyle=grd;x.fillRect(0,0,2,256);skyTex.needsUpdate=true;
-  scene.fog.color.setRGB(pal.bot[0]/255,pal.bot[1]/255,pal.bot[2]/255).convertSRGBToLinear();
+  grd.addColorStop(0,rgb(pal.top.map(v=>v*dDim)));grd.addColorStop(1,rgb(pal.bot.map(v=>v*dDim)));x.fillStyle=grd;x.fillRect(0,0,2,256);skyTex.needsUpdate=true;
+  scene.fog.color.setRGB(pal.bot[0]/255*dDim,pal.bot[1]/255*dDim,pal.bot[2]/255*dDim).convertSRGBToLinear();
   const ang=lerp(.12,Math.PI-.12,clamp(phase/.82,0,1));
   const sx=Math.cos(ang)*120,sy=Math.sin(ang)*90+4,sz=-60;
   sunBall.position.set(sx,sy,sz);sunBall.visible=phase<.82;
@@ -1279,6 +1283,7 @@ function updateDay(dt){
     sunLight.color.setRGB(pal.sun[0]/255,pal.sun[1]/255,pal.sun[2]/255).convertSRGBToLinear();}
   else{sunLight.position.set(-sx,60,60);sunLight.intensity=.32;sunLight.color.set(C("#9fb4ff"));}
   hemiLight.intensity=lerp(.95,.28,clamp((phase-.6)/.4,0,1));
+  if(discoMix>.002){sunLight.intensity*=lerp(1,.12,discoMix);hemiLight.intensity*=lerp(1,.2,discoMix);if(discoMix>.5){sunBall.visible=false;moonBall.visible=false;}}
   starPts.material.opacity=clamp((phase-.66)/.3,0,1)*.9;
   const lampOn=phase>.6?1:0;
   lampLights.forEach(l=>l.intensity=lerp(l.intensity,lampOn*1.1,dt*2));
@@ -1314,8 +1319,9 @@ function updateParticles(dt){
     if(f.life<=0){scene.remove(f.p);fireworks.splice(i,1);}}
   if(duckObj){duckObj.position.y=.32+Math.sin(t*1.6)*.05;duckObj.rotation.y=Math.sin(t*.4)*.6;}
   if(discoT>0){discoT-=dt;const a=t*5;
-    discoLights.forEach((l,i)=>{l.intensity=discoT>0?1.6:0;l.position.set(-19+Math.cos(a+i*2.1)*2.2,2.6+Math.sin(a*1.3+i)*1,-19+Math.sin(a+i*2.1)*2.2);});
-    if(discoT<=0)discoLights.forEach(l=>l.intensity=0);}
+    discoLights.forEach((l,i)=>{l.intensity=4.2;l.position.set(-19+Math.cos(a+i*2.1)*2.4,2.7+Math.sin(a*1.3+i)*1,-19+Math.sin(a+i*2.1)*2.4);});
+    if(discoBall){discoBall.visible=true;discoBall.rotation.y=t*2.4;discoBall.rotation.x=t*.6;discoBall.material.emissiveIntensity=.55+Math.sin(t*9)*.35;}
+    if(discoT<=0){discoLights.forEach(l=>l.intensity=0);if(discoBall){discoBall.visible=false;discoBall.material.emissiveIntensity=0;}}}
   for(const s of swayers)s.m.rotation.z=Math.sin(t*.8+s.ph)*.025;
   if(pondMat)pondMat.emissiveIntensity=.3+Math.sin(t*1.5)*.12;
   if(fountainMat)fountainMat.emissiveIntensity=.35+Math.sin(t*2.2)*.18;
