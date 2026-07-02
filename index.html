@@ -1372,7 +1372,7 @@ function loop(){
   updateDay(dt);updateParticles(dt);
   if(state==="dialog"&&convoMesh){ // cinematic look-at
     const h=convoMesh.group.position;
-    const ty=Math.atan2(playerObj.position.x-h.x,playerObj.position.z-h.z)+Math.PI;
+    const ty=Math.atan2(playerObj.position.x-h.x,playerObj.position.z-h.z);
     let dy=ty-yaw;while(dy>Math.PI)dy-=Math.PI*2;while(dy<-Math.PI)dy+=Math.PI*2;
     yaw+=dy*.12;
     const dist=Math.hypot(h.x-playerObj.position.x,h.z-playerObj.position.z);

@@ -1396,7 +1396,7 @@ function loop(){
   updateDay(dt);updateParticles(dt);
   if(state==="dialog"&&convoMesh){ // cinematic look-at
     const h=convoMesh.group.position;
-    const ty=Math.atan2(playerObj.position.x-h.x,playerObj.position.z-h.z)+Math.PI;
+    const ty=Math.atan2(playerObj.position.x-h.x,playerObj.position.z-h.z);
     let dy=ty-yaw;while(dy>Math.PI)dy-=Math.PI*2;while(dy<-Math.PI)dy+=Math.PI*2;
     yaw+=dy*.12;
     const dist=Math.hypot(h.x-playerObj.position.x,h.z-playerObj.position.z);
@@ -1700,7 +1700,7 @@ $("soundBtn").onclick=()=>{SFX.muted=!SFX.muted;$("soundBtn").textContent=SFX.mu
 function renderDiffPick(){const wrap=$("diffPick");wrap.innerHTML="";
   Object.keys(DIFF).forEach(k=>{const b=document.createElement("button");b.className="diffBtn"+(k===difficulty?" active":"");
     b.innerHTML='<div class="dl">'+DIFF[k].label+'</div><div class="dd">'+DIFF[k].dd+'</div>';
-    b.onclick=()=>{if(k!==difficulty){difficulty=k;$("diffTag").textContent=DIFF[k].label;renderDiffPick();resetRun();}};
+    b.onclick=()=>{if(k!==difficulty){difficulty=k;$("diffTag").textContent=DIFF[k].label;renderDiffPick();resetRun();if(typeof mpWrite==="function")mpWrite();}};
     wrap.appendChild(b);});}
 function openManual(){if(document.exitPointerLock)document.exitPointerLock();$("manual").classList.add("show");if(state==="world")state="paused";}
 function closeManual(){$("manual").classList.remove("show");if(state!=="dialog"&&state!=="sale"&&state!=="win"&&state!=="wheel"&&state!=="shop")state="world";updateHint();}
@@ -1709,45 +1709,48 @@ $("manualBtn").onclick=openManual;$("manualClose").onclick=closeManual;
 const PANTRY_ID="89e963ad-bad4-488c-9186-205d6c0b6bfb";
 const PANTRY_URL=n=>"https://getpantry.cloud/apiv1/pantry/"+PANTRY_ID+"/basket/"+encodeURIComponent(n);
 let mpOn=false,mpName="",mpRoom="",mpId="",mpRevenue=0,mpMaxStreak=0,mpStart=0,mpWriting=false,mpPoll=null,mpHeartbeat=null,mpLastData={},mp429=0;
-try{mpId=localStorage.getItem("sw_mpid")||"";}catch(e){}
-if(!mpId){mpId="pl"+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);try{localStorage.setItem("sw_mpid",mpId);}catch(e){}}
+try{mpId=sessionStorage.getItem("sw_mpid")||"";}catch(e){}
+if(!mpId){mpId="pl"+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);try{sessionStorage.setItem("sw_mpid",mpId);}catch(e){}}
 try{if($("mpNameIn"))$("mpNameIn").value=localStorage.getItem("sw_mpname")||"";if($("mpRoomIn"))$("mpRoomIn").value=localStorage.getItem("sw_mproom")||"";}catch(e){}
 function mpEsc(s){return String(s).replace(/[<>&\"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'\"':"&quot;"}[c]));}
 function mpRoomClean(s){return (s||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"-").replace(/-+/g,"-").slice(0,24);}
 function mpFmtTime(ms){const s=Math.max(0,Math.floor(ms/1000)),m=Math.floor(s/60);return m+":"+String(s%60).padStart(2,"0");}
-function mpEntry(){return {name:mpName,revenue:Math.round(mpRevenue),streak:mpMaxStreak,timeMs:Date.now()-mpStart,ts:Date.now()};}
-async function mpWrite(){
-  if(!mpOn||mpWriting)return; if(Date.now()-mp429<9000)return; mpWriting=true;
-  const body={}; body[mpId]=mpEntry();
+function mpEntry(){return {name:mpName,revenue:Math.round(mpRevenue),streak:mpMaxStreak,timeMs:Date.now()-mpStart,diff:(typeof difficulty!=="undefined"&&typeof DIFF!=="undefined"&&DIFF[difficulty]?DIFF[difficulty].label:"-"),ts:Date.now()};}
+async function mpWrite(n){
+  if(!mpOn||mpWriting)return; if(Date.now()-mp429<4000)return; mpWriting=true;
+  if(typeof n!=="number")n=2;
+  const body={}; body[mpId]=mpEntry(); let ok=false;
   try{
-    const r=await fetch(PANTRY_URL(mpRoom),{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(r.status===400){await fetch(PANTRY_URL(mpRoom),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});}
-    else if(r.status===429){mp429=Date.now();}
+    let r=await fetch(PANTRY_URL(mpRoom),{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(r.status===400){r=await fetch(PANTRY_URL(mpRoom),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});}
+    if(r.status===429){mp429=Date.now();}
+    else if(r.ok){ok=true;}
   }catch(e){}
   mpWriting=false;
+  if(!ok&&n>0&&mpOn)setTimeout(function(){mpWrite(n-1);},5000);
 }
 async function mpRead(){
-  if(!mpOn)return null; if(Date.now()-mp429<9000)return null;
+  if(!mpOn)return null;
   try{
     const r=await fetch(PANTRY_URL(mpRoom),{headers:{"Content-Type":"application/json"}});
-    if(r.status===429){mp429=Date.now();return null;}
     if(!r.ok)return null;
     const d=await r.json(); if(d&&d._metadata)delete d._metadata; mpLastData=d||{}; return mpLastData;
   }catch(e){return null;}
 }
+function mpDiffColor(l){return l==="Hard"?"#e06a5a":(l==="Medium"?"#e0b62e":(l==="Easy"?"#3fbf7f":"#8a95ad"));}
 function mpRenderBoard(d){
   d=d||mpLastData||{};
-  const rows=Object.keys(d).filter(k=>k!=="_metadata"&&d[k]&&typeof d[k]==="object").map(k=>Object.assign({id:k},d[k]));
+  const rows=Object.keys(d).filter(k=>k!=="_metadata"&&d[k]&&typeof d[k]==="object").map(k=>Object.assign({id:k},d[k])).filter(r=>r.id===mpId||Date.now()-(r.ts||0)<120000);
   rows.sort((a,b)=>(b.revenue||0)-(a.revenue||0));
-  let h='<table style="width:100%;border-collapse:collapse;font-size:14px"><tr style="color:#aab3d6;text-align:left"><th style="padding:6px 5px">#</th><th style="padding:6px 5px">Player</th><th style="padding:6px 5px;text-align:right">Revenue</th><th style="padding:6px 5px;text-align:right">Best&nbsp;streak</th><th style="padding:6px 5px;text-align:right">Time</th></tr>';
-  if(!rows.length){h+='<tr><td colspan="5" style="padding:16px 5px;color:#aab3d6">No players yet \u2014 share room code \u201c<b>'+mpEsc(mpRoom)+'</b>\u201d.</td></tr>';}
+  let h='<table style="width:100%;border-collapse:collapse;font-size:14px"><tr style="color:#aab3d6;text-align:left"><th style="padding:6px 5px">#</th><th style="padding:6px 5px">Player</th><th style="padding:6px 5px;text-align:right">Revenue</th><th style="padding:6px 5px;text-align:right">Best&nbsp;streak</th><th style="padding:6px 5px;text-align:right">Time</th><th style="padding:6px 5px;text-align:center">Difficulty</th></tr>';
+  if(!rows.length){h+='<tr><td colspan="6" style="padding:16px 5px;color:#aab3d6">No players yet \u2014 share room code \u201c<b>'+mpEsc(mpRoom)+'</b>\u201d.</td></tr>';}
   rows.forEach((r,i)=>{const me=r.id===mpId,medal=["\ud83e\udd47","\ud83e\udd48","\ud83e\udd49"][i]||("#"+(i+1));
     h+='<tr style="border-top:1px solid #232d47;'+(me?"background:rgba(21,160,137,.16)":"")+'">'+
        '<td style="padding:9px 5px">'+medal+'</td>'+
        '<td style="padding:9px 5px;font-weight:'+(me?"800":"600")+'">'+mpEsc(r.name||"?")+(me?' <span style="color:#15a089;font-size:11px">(you)</span>':"")+'</td>'+
        '<td style="padding:9px 5px;text-align:right;font-weight:700;color:#ffd36b">'+fmt(Math.round(r.revenue||0))+' \u20ac</td>'+
        '<td style="padding:9px 5px;text-align:right">\ud83d\udd25&nbsp;'+(r.streak||0)+'</td>'+
-       '<td style="padding:9px 5px;text-align:right;color:#aab3d6">'+mpFmtTime(r.timeMs||0)+'</td></tr>';});
+       '<td style="padding:9px 5px;text-align:right;color:#aab3d6">'+mpFmtTime(r.timeMs||0)+'</td><td style="padding:9px 5px;text-align:center"><span style="font-weight:700;color:'+mpDiffColor(r.diff||"-")+'">'+mpEsc(r.diff||"-")+'</span></td></tr>';});
   h+='</table>';
   if($("boardBody"))$("boardBody").innerHTML=h;
 }
@@ -1758,7 +1761,7 @@ function openBoard(){
   else{mpRenderBoard(mpLastData);mpRead().then(d=>{if(d)mpRenderBoard(d);});}
   $("board").classList.add("show");
   if(mpPoll)clearInterval(mpPoll);
-  if(mpOn)mpPoll=setInterval(()=>mpRead().then(d=>{if(d)mpRenderBoard(d);}),7000);
+  if(mpOn)mpPoll=setInterval(()=>mpRead().then(d=>{if(d)mpRenderBoard(d);}),5000);
 }
 function closeBoard(){$("board").classList.remove("show");if(mpPoll){clearInterval(mpPoll);mpPoll=null;}if(state==="paused")state="world";if(typeof updateHint==="function")updateHint();}
 function mpOnSale(price){if(!mpOn)return;mpRevenue+=price;if(typeof streak!=="undefined")mpMaxStreak=Math.max(mpMaxStreak,streak);mpWrite();}
